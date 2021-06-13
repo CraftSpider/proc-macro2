@@ -1,5 +1,5 @@
 
-use ::arbitrary::{Arbitrary, Unstructured, Result};
+use ::arbitrary::{size_hint, Arbitrary, Unstructured, Result};
 use super::*;
 
 impl<'a> Arbitrary<'a> for Span {
@@ -9,6 +9,10 @@ impl<'a> Arbitrary<'a> for Span {
         } else {
             Ok(Span::mixed_site())
         }
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        <bool as Arbitrary>::size_hint(depth + 1)
     }
 }
 
@@ -20,23 +24,37 @@ impl<'a> Arbitrary<'a> for Spacing {
             Ok(Spacing::Joint)
         }
     }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        <bool as Arbitrary>::size_hint(depth + 1)
+    }
 }
 
 impl<'a> Arbitrary<'a> for Ident {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
         Ok(Ident::new(<&str as Arbitrary>::arbitrary(u)?, <Span as Arbitrary>::arbitrary(u)?))
     }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        size_hint::and(
+            <&str as Arbitrary>::size_hint(depth + 1),
+            <Span as Arbitrary>::size_hint(depth + 1),
+        )
+    }
 }
 
 impl<'a> Arbitrary<'a> for Delimiter {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
-        Ok(match <u8 as Arbitrary>::arbitrary(u)? % 4 {
-            0 => Delimiter::Brace,
-            1 => Delimiter::Bracket,
-            2 => Delimiter::Parenthesis,
-            3 => Delimiter::None,
-            _ => unreachable!(),
-        })
+        u.choose(&[
+            Delimiter::Brace,
+            Delimiter::Bracket,
+            Delimiter::Parenthesis,
+            Delimiter::None,
+        ]).map(|d| d.clone())
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        <usize as Arbitrary>::size_hint(depth + 1)
     }
 }
 
@@ -44,11 +62,18 @@ impl<'a> Arbitrary<'a> for Punct {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
         Ok(Punct::new(<char as Arbitrary>::arbitrary(u)?, <Spacing as Arbitrary>::arbitrary(u)?))
     }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        size_hint::and(
+            <char as Arbitrary>::size_hint(depth + 1),
+            <Spacing as Arbitrary>::size_hint(depth + 1),
+        )
+    }
 }
 
 impl<'a> Arbitrary<'a> for Literal {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
-        Ok(match <u8 as Arbitrary>::arbitrary(u)? % 31 {
+        Ok(match u.int_in_range::<u8>(0..=30)? {
             0 => Literal::u8_suffixed(<u8 as Arbitrary>::arbitrary(u)?),
             1 => Literal::u16_suffixed(<u16 as Arbitrary>::arbitrary(u)?),
             2 => Literal::u32_suffixed(<u32 as Arbitrary>::arbitrary(u)?),
@@ -83,17 +108,51 @@ impl<'a> Arbitrary<'a> for Literal {
             _ => unreachable!()
         })
     }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        size_hint::and(
+            <u8 as Arbitrary>::size_hint(depth + 1),
+            size_hint::or_all(&[
+                <u8 as Arbitrary>::size_hint(depth + 1),
+                <u16 as Arbitrary>::size_hint(depth + 1),
+                <u32 as Arbitrary>::size_hint(depth + 1),
+                <u64 as Arbitrary>::size_hint(depth + 1),
+                <u128 as Arbitrary>::size_hint(depth + 1),
+                <usize as Arbitrary>::size_hint(depth + 1),
+                <i8 as Arbitrary>::size_hint(depth + 1),
+                <i16 as Arbitrary>::size_hint(depth + 1),
+                <i32 as Arbitrary>::size_hint(depth + 1),
+                <i64 as Arbitrary>::size_hint(depth + 1),
+                <i128 as Arbitrary>::size_hint(depth + 1),
+                <isize as Arbitrary>::size_hint(depth + 1),
+                <f32 as Arbitrary>::size_hint(depth + 1),
+                <f64 as Arbitrary>::size_hint(depth + 1),
+                <char as Arbitrary>::size_hint(depth + 1),
+                <&str as Arbitrary>::size_hint(depth + 1),
+                <&[u8] as Arbitrary>::size_hint(depth + 1),
+            ])
+        )
+    }
 }
 
 impl<'a> Arbitrary<'a> for Group {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
         Ok(Group::new(<Delimiter as Arbitrary>::arbitrary(u)?, <TokenStream as Arbitrary>::arbitrary(u)?))
     }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        size_hint::recursion_guard(depth, |new_depth| {
+            size_hint::and(
+                <Delimiter as Arbitrary>::size_hint(new_depth),
+                <TokenStream as Arbitrary>::size_hint(new_depth)
+            )
+        })
+    }
 }
 
 impl<'a> Arbitrary<'a> for TokenTree {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
-        Ok(match <u8 as Arbitrary>::arbitrary(u)? % 4 {
+        Ok(match u.int_in_range::<u8>(0..=3)? {
             0 => TokenTree::Group(<Group as Arbitrary>::arbitrary(u)?),
             1 => TokenTree::Ident(<Ident as Arbitrary>::arbitrary(u)?),
             2 => TokenTree::Punct(<Punct as Arbitrary>::arbitrary(u)?),
@@ -101,10 +160,30 @@ impl<'a> Arbitrary<'a> for TokenTree {
             _ => unreachable!()
         })
     }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        size_hint::recursion_guard(depth, |new_depth| {
+            size_hint::and(
+                <u8 as Arbitrary>::size_hint(new_depth),
+                size_hint::or_all(&[
+                    <Group as Arbitrary>::size_hint(new_depth),
+                    <Ident as Arbitrary>::size_hint(new_depth),
+                    <Punct as Arbitrary>::size_hint(new_depth),
+                    <Literal as Arbitrary>::size_hint(new_depth),
+                ])
+            )
+        })
+    }
 }
 
 impl<'a> Arbitrary<'a> for TokenStream {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
         Ok(<Vec<TokenTree> as Arbitrary>::arbitrary(u)?.into_iter().collect())
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        size_hint::recursion_guard(depth, |new_depth| {
+            <Vec<TokenTree> as Arbitrary>::size_hint(new_depth)
+        })
     }
 }
