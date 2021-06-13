@@ -24,12 +24,14 @@ features = ["span-locations"]
 
 [dependencies]
 unicode-xid = "0.2"
+arbitrary = { version = "1.0", optional = true }
 
 [dev-dependencies]
 quote = { version = "1.0", default_features = false }
 
 [features]
 proc-macro = []
+arbitrary-impls = ["arbitrary"]
 default = ["proc-macro"]
 
 # Expose methods Span::start and Span::end which give the line/column location

@@ -92,6 +92,8 @@ mod parse;
 
 #[cfg(wrap_proc_macro)]
 mod detection;
+#[cfg(feature = "arbitrary-impls")]
+mod arbitrary;
 
 // Public for proc_macro2::fallback::force() and unforce(), but those are quite
 // a niche use case so we omit it from rustdoc.
